@@ -30,7 +30,7 @@ import { PanelEmpty } from '../overlays/panel'
 import { ConfigField } from './config-field'
 import { enumOptionsFor, getNested, isExternalMemoryProvider, sectionFieldEntries, setNested } from './helpers'
 import { MemoryConnect } from './memory/connect'
-import { MemoryEntriesPanel } from './memory-settings'
+import { MemoryManagement } from './memory-settings'
 import { ProviderConfigPanel } from './memory/provider-config-panel'
 import { ModelSettings, ModelSettingsSkeleton } from './model-settings'
 import { EmptyState, ListRow, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
@@ -358,9 +358,9 @@ export function ConfigSettings({
         </div>
       )}
       {/* Memory entries management (add/edit/delete) on the Memory sub-view */}
-      {activeSectionId === 'memory' && configSubView === 'memory' && (
+      {activeSectionId === 'memory' && configSubView === 'memory' && config && (
         <div className="mt-6">
-          <MemoryEntriesPanel />
+          <MemoryManagement config={config} />
         </div>
       )}
       <input

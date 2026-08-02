@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useStore } from '@nanostores/react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Codicon } from '@/components/ui/codicon'
-import { Trash2, Plus, Save, X, Search } from '@/lib/icons'
+import { Trash2, Plus, Save, X, Search, RefreshCw, Brain, Cloud, ChevronDown } from '@/lib/icons'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
+import { $activeProfile, $profiles, normalizeProfileKey, refreshProfiles } from '@/store/profile'
+import { isExternalMemoryProvider } from './helpers'
+import { MemoryConnect } from './memory/connect'
+import { ProviderConfigPanel } from './memory/provider-config-panel'
+import type { ProfileInfo } from '@/types/hermes'
 
 type MemoryType = 'memory' | 'user'
 
@@ -16,34 +22,118 @@ interface MemoryEntry {
   content: string
 }
 
-async function fetchEntries(type: MemoryType): Promise<MemoryEntry[]> {
+async function fetchEntries(type: MemoryType, profile?: string): Promise<MemoryEntry[]> {
+  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   const resp = await window.hermesDesktop.api<{ entries: string[]; total: number }>({
     method: 'GET',
-    path: `/api/memory/entries?target=${type}`
+    path: `/api/memory/entries?target=${type}${profileParam}`
   })
   return (resp.entries || []).map((content, index) => ({ index, content }))
 }
 
-async function addEntry(type: MemoryType, content: string): Promise<void> {
+async function fetchCount(type: MemoryType, profile?: string): Promise<number> {
+  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
+  const resp = await window.hermesDesktop.api<{ entries: string[]; total: number }>({
+    method: 'GET',
+    path: `/api/memory/entries?target=${type}${profileParam}`
+  })
+  return resp.total ?? resp.entries?.length ?? 0
+}
+
+/** Lightweight stats bar showing budget usage (chars used vs limit). Renders above the segmented tabs. */
+export function MemoryStats({ onRefresh, profile }: { onRefresh?: () => void; profile?: string }) {
+  const [state, setState] = useState<{ memoryUsed: number; memoryLimit: number; userUsed: number; userLimit: number; loading: boolean }>({
+    memoryUsed: 0, memoryLimit: 0, userUsed: 0, userLimit: 0, loading: true
+  })
+
+  const load = useCallback(async () => {
+    try {
+      const [memEntries, userEntries, config] = await Promise.all([
+        fetchEntries('memory', profile),
+        fetchEntries('user', profile),
+        window.hermesDesktop.api<any>({ method: 'GET', path: '/api/config' })
+      ])
+
+      const memUsed = memEntries.reduce((sum: number, e: MemoryEntry) => sum + e.content.length, 0)
+      const userUsed = userEntries.reduce((sum: number, e: MemoryEntry) => sum + e.content.length, 0)
+      const memLimit = config?.memory?.memory_char_limit ?? 0
+      const userLimit = config?.memory?.user_char_limit ?? 0
+
+      setState({ memoryUsed: memUsed, memoryLimit: memLimit, userUsed: userUsed, userLimit: userLimit, loading: false })
+    } catch {
+      setState(s => ({ ...s, loading: false }))
+    }
+  }, [profile])
+
+  useEffect(() => {
+    let cancelled = false
+    void load().then(() => { if (!cancelled) return })
+    return () => { cancelled = true }
+  }, [load])
+
+  const formatBudget = (used: number, limit: number) => {
+    if (!limit) return `${used} chars`
+    const pct = Math.min((used / limit) * 100, 100)
+    return `${used} / ${limit} chars (${Math.round(pct)}%)`
+  }
+
+  if (state.loading) {
+    return (
+      <div className="mb-2 flex items-center gap-4 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/40 px-3 py-2">
+        <div className="size-3 animate-spin rounded-full border-2 border-(--ui-stroke-secondary) border-t-(--ui-text-secondary)" />
+        <span className="text-[0.7rem] text-muted-foreground">Loading budget…</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-2 flex items-center gap-4 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/40 px-3 py-2">
+      <span className="text-[0.7rem] font-medium text-(--ui-text-secondary)">
+        Budget usage
+      </span>
+      <span className="text-[0.65rem] text-muted-foreground/60">
+        Agent: {formatBudget(state.memoryUsed, state.memoryLimit)}
+      </span>
+      <span className="text-[0.65rem] text-muted-foreground/60">
+        Profile: {formatBudget(state.userUsed, state.userLimit)}
+      </span>
+      {onRefresh && (
+        <button
+          className="ml-auto rounded p-1 text-muted-foreground/60 hover:text-foreground hover:bg-(--ui-bg-secondary)"
+          onClick={() => void load()}
+          title="Refresh budget"
+          type="button"
+        >
+          <RefreshCw className="size-3" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+async function addEntry(type: MemoryType, content: string, profile?: string): Promise<void> {
+  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   await window.hermesDesktop.api<{ ok: boolean }>({
     method: 'POST',
-    path: `/api/memory/entries?target=${type}`,
+    path: `/api/memory/entries?target=${type}${profileParam}`,
     body: { content }
   })
 }
 
-async function updateEntry(type: MemoryType, index: number, content: string): Promise<void> {
+async function updateEntry(type: MemoryType, index: number, content: string, profile?: string): Promise<void> {
+  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   await window.hermesDesktop.api<{ ok: boolean }>({
     method: 'PUT',
-    path: `/api/memory/entries/${index}?target=${type}`,
+    path: `/api/memory/entries/${index}?target=${type}${profileParam}`,
     body: { content }
   })
 }
 
-async function deleteEntry(type: MemoryType, index: number): Promise<void> {
+async function deleteEntry(type: MemoryType, index: number, profile?: string): Promise<void> {
+  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   await window.hermesDesktop.api<{ ok: boolean }>({
     method: 'DELETE',
-    path: `/api/memory/entries/${index}`
+    path: `/api/memory/entries/${index}${profileParam}`
   })
 }
 
@@ -147,7 +237,7 @@ function MemoryCard({
 }
 
 /** Standalone panel for managing memory entries (add/edit/delete). Embeds inside ConfigSettings. */
-export function MemoryEntriesPanel() {
+export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => void; profile?: string }) {
   const [activeTab, setActiveTab] = useState<MemoryType>('memory')
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [counts, setCounts] = useState<{ memory: number; user: number }>({ memory: 0, user: 0 })
@@ -159,7 +249,7 @@ export function MemoryEntriesPanel() {
   const loadEntries = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await fetchEntries(activeTab)
+      const data = await fetchEntries(activeTab, profile)
       setEntries(data)
       setCounts(prev => ({ ...prev, [activeTab]: data.length }))
     } catch (err) {
@@ -167,31 +257,40 @@ export function MemoryEntriesPanel() {
     } finally {
       setLoading(false)
     }
-  }, [activeTab])
+  }, [activeTab, profile])
 
   useEffect(() => {
     loadEntries()
+    // Preload the other tab's count so both badge numbers show on mount.
+    void (async () => {
+      try {
+        const other = activeTab === 'memory' ? 'user' : 'memory'
+        const data = await fetchEntries(other, profile)
+        setCounts(prev => ({ ...prev, [other]: data.length }))
+      } catch { /* ignore */ }
+    })()
   }, [loadEntries])
 
   // Reload both counts when adding so the other tab stays fresh
   const reloadAllCounts = useCallback(async () => {
     try {
       const [memData, userData] = await Promise.all([
-        fetchEntries('memory'),
-        fetchEntries('user')
+        fetchEntries('memory', profile),
+        fetchEntries('user', profile)
       ])
       setCounts({ memory: memData.length, user: userData.length })
     } catch { /* ignore */ }
-  }, [])
+  }, [profile])
 
   const handleAdd = async () => {
     if (!newContent.trim()) return
     try {
-      await addEntry(activeTab, newContent.trim())
+      await addEntry(activeTab, newContent.trim(), profile)
       setNewContent('')
       setAdding(false)
       await loadEntries()
       await reloadAllCounts()
+      onRefresh?.()
       notify({ message: 'Memory added' })
     } catch (err) {
       notifyError(err, 'Failed to add memory')
@@ -200,8 +299,9 @@ export function MemoryEntriesPanel() {
 
   const handleSave = async (index: number, content: string) => {
     try {
-      await updateEntry(activeTab, index, content)
+      await updateEntry(activeTab, index, content, profile)
       await loadEntries()
+      onRefresh?.()
       notify({ message: 'Memory updated' })
     } catch (err) {
       notifyError(err, 'Failed to update memory')
@@ -211,9 +311,10 @@ export function MemoryEntriesPanel() {
   const handleDelete = async (index: number) => {
     if (!window.confirm('Delete this memory?')) return
     try {
-      await deleteEntry(activeTab, index)
+      await deleteEntry(activeTab, index, profile)
       await loadEntries()
       await reloadAllCounts()
+      onRefresh?.()
       notify({ message: 'Memory deleted' })
     } catch (err) {
       notifyError(err, 'Failed to delete memory')
@@ -230,6 +331,9 @@ export function MemoryEntriesPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Stats bar above tabs */}
+      <MemoryStats onRefresh={onRefresh} profile={profile} />
+
       {/* Tabs with count */}
       <SegmentedControl
         onChange={id => { setActiveTab(id); setQuery('') }}
@@ -339,6 +443,116 @@ export function MemoryEntriesPanel() {
             ))}
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+/** Top-level memory management: built-in (always on) + external provider when configured. */
+export function MemoryManagement({ config }: { config: Record<string, unknown> }) {
+  const memConfig = config?.memory as Record<string, unknown> | undefined
+  const provider = memConfig?.provider as string | undefined
+  const hasExternal = isExternalMemoryProvider(provider)
+
+  const activeProfile = useStore($activeProfile)
+  const profiles = useStore($profiles)
+  const [selectedProfile, setSelectedProfile] = useState<string | undefined>(undefined)
+  const [showPicker, setShowPicker] = useState(false)
+
+  useEffect(() => {
+    void refreshProfiles()
+  }, [])
+
+  useEffect(() => {
+    // If the currently selected profile no longer exists, reset to active
+    if (selectedProfile && !profiles.some(p => p.name === selectedProfile)) {
+      setSelectedProfile(undefined)
+    }
+  }, [profiles, selectedProfile])
+
+  const displayProfile = selectedProfile || normalizeProfileKey(activeProfile)
+  const displayName = selectedProfile || activeProfile
+
+  const handleProfileSelect = (name: string) => {
+    setSelectedProfile(name === normalizeProfileKey(activeProfile) ? undefined : name)
+    setShowPicker(false)
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Profile selector */}
+      {profiles.length > 1 && (
+        <div className="relative">
+          <span className="mb-1 block text-[0.7rem] font-medium text-muted-foreground">Viewing memories for</span>
+          <button
+            className="flex items-center gap-1.5 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/40 px-2.5 py-1.5 text-[0.7rem] font-medium text-(--ui-text-secondary) hover:bg-(--ui-bg-secondary)/60"
+            onClick={() => setShowPicker(open => !open)}
+            type="button"
+          >
+            <Codicon name="person" size="0.85em" />
+            {displayName}
+            {selectedProfile && <span className="text-muted-foreground/50">(viewing)</span>}
+            <ChevronDown className="ml-1 size-3 text-muted-foreground/50" />
+          </button>
+          {showPicker && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowPicker(false)} />
+              <div className="absolute left-0 z-50 mt-1 w-56 origin-top-left rounded-lg border border-(--ui-stroke-secondary) bg-popover shadow-lg">
+                {profiles.map(p => {
+                  const pName = normalizeProfileKey(p.name)
+                  const isActive = pName === normalizeProfileKey(activeProfile)
+                  const isSelected = pName === displayProfile
+                  return (
+                    <button
+                      key={pName}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-tl-lg rounded-tr-lg px-3 py-2 text-sm first:rounded-tl-lg last:rounded-bl-lg',
+                        isSelected
+                          ? 'bg-(--ui-accent-secondary)/20 text-foreground'
+                          : 'text-muted-foreground hover:bg-(--ui-bg-tertiary)'
+                      )}
+                      onClick={() => void handleProfileSelect(pName)}
+                      type="button"
+                    >
+                      <span className="font-medium">{pName}</span>
+                      <span className="flex items-center gap-1.5">
+                        {isActive && (
+                          <span className="rounded bg-(--ui-accent-secondary)/20 px-1.5 py-0.5 text-[0.6rem] font-medium text-(--ui-text-secondary)">
+                            active
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Built-in memory — always active */}
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <Brain className="size-3.5 text-(--ui-text-secondary)" />
+          <h3 className="text-sm font-medium text-foreground">Built-in Memory</h3>
+          <span className="text-[0.65rem] text-muted-foreground/60">
+            (MEMORY.md / USER.md — always active)
+          </span>
+        </div>
+        <MemoryEntriesPanel profile={displayProfile} />
+      </section>
+
+      {/* External provider — shown when a non-builtin provider is selected */}
+      {hasExternal && (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <Cloud className="size-3.5 text-(--ui-text-secondary)" />
+            <h3 className="text-sm font-medium text-foreground">{provider} Provider</h3>
+            <MemoryConnect provider={provider} />
+          </div>
+          <ProviderConfigPanel provider={provider} />
+        </section>
       )}
     </div>
   )
