@@ -38,7 +38,6 @@ import { BillingSettings } from './billing'
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
-import { JasonSettings } from './jason-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { NotificationsSettings } from './notifications-settings'
@@ -57,7 +56,6 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'billing',
   'plugins',
   'sessions',
-  'jason',
   'about'
 ]
 
@@ -294,13 +292,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('sessions')
       },
       {
-        active: activeView === 'jason',
-        icon: codiconIcon('person'),
-        id: 'jason',
-        label: 'Jason',
-        onSelect: () => setActiveView('jason')
-      },
-      {
         active: activeView === 'about',
         gapBefore: true,
         icon: Info,
@@ -381,8 +372,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             <BillingSettings />
           ) : activeView === 'plugins' ? (
             <PluginsSettings />
-          ) : activeView === 'jason' ? (
-            <JasonSettings />
           ) : (
             <SessionsSettings />
           )}
