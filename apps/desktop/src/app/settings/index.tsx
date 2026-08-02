@@ -83,13 +83,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   // sub-view is deep-linkable and survives a refresh.
   const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
   const [keysView] = useRouteEnumParam<KeysView>('kview', KEYS_VIEWS, 'tools')
-  // Config section sub-views (Memory & Context → Memory / Context fields).
-  const CONFIG_SUB_VIEWS = ['memory', 'context'] as const
-  const configSubView = (() => {
-    const raw = new URLSearchParams(search).get('cview')
-    if (raw === 'memory' || raw === 'context') return raw
-    return 'memory'
-  })()
 
   // Jump to a section + its sub-view in one navigate. Two sequential setters
   // would each read the same stale `search` and the second would clobber the
@@ -117,11 +110,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const openKeysView = useCallback((view: KeysView) => openSubView('keys', 'kview', view, 'tools'), [openSubView])
-
-  const openConfigSubView = useCallback(
-    (view: (typeof CONFIG_SUB_VIEWS)[number]) => openSubView('config:memory', 'cview', view, 'memory'),
-    [openSubView]
-  )
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -158,33 +146,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const navGroups: OverlayNavGroup[] = useMemo(
     () => [
       ...SECTIONS.map(s => {
-        if (s.id === 'memory') {
-          return {
-            active: activeView === 'config:memory',
-            children: [
-              {
-                active: activeView === 'config:memory' && configSubView === 'memory',
-                icon: Brain,
-                id: 'cview:memory',
-                label: t.settings.nav.memory ?? 'Memory',
-                onSelect: () => openConfigSubView('memory')
-              },
-              {
-                active: activeView === 'config:memory' && configSubView === 'context',
-                icon: Layers3,
-                id: 'cview:context',
-                label: t.settings.nav.context ?? 'Context',
-                onSelect: () => openConfigSubView('context')
-              }
-            ],
-            gapBefore: true,
-            icon: Brain,
-            id: 'config:memory',
-            label: t.settings.sections.memory ?? 'Memory & Context',
-            onSelect: () => openConfigSubView('memory')
-          }
-        }
-
         const view = `config:${s.id}` as SettingsViewId
 
         return {
@@ -300,7 +261,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('about')
       }
     ],
-    [activeView, configSubView, keysView, providerView, t, setActiveView, openProviderView, openKeysView, openConfigSubView]
+    [activeView, keysView, providerView, t, setActiveView, openProviderView, openKeysView]
   )
 
   const navFooter = (
@@ -351,7 +312,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           ) : activeView.startsWith('config:') ? (
             <ConfigSettings
               activeSectionId={activeView.slice('config:'.length)}
-              configSubView={activeView === 'config:memory' ? configSubView : undefined}
               importInputRef={importInputRef}
               onConfigSaved={onConfigSaved}
               onMainModelChanged={onMainModelChanged}

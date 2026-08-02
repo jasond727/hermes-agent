@@ -31,25 +31,33 @@ async function fetchEntries(type: MemoryType, profile?: string): Promise<MemoryE
 }
 
 /** Lightweight stats bar showing budget usage (chars used vs limit). Renders above the segmented tabs. */
-export function MemoryStats({ onRefresh, profile }: { onRefresh?: () => void; profile?: string }) {
+export function MemoryStats({ onRefresh, profile, memoryLimit, userLimit }: { onRefresh?: () => void; profile?: string; memoryLimit?: number; userLimit?: number }) {
   const [state, setState] = useState<{ memoryUsed: number; memoryLimit: number; userUsed: number; userLimit: number; loading: boolean }>({
     memoryUsed: 0, memoryLimit: 0, userUsed: 0, userLimit: 0, loading: true
   })
 
+  // Reactively update limits from props without re-fetching entries.
+  useEffect(() => {
+    if (memoryLimit != null || userLimit != null) {
+      setState(s => ({
+        ...s,
+        memoryLimit: memoryLimit ?? s.memoryLimit,
+        userLimit: userLimit ?? s.userLimit
+      }))
+    }
+  }, [memoryLimit, userLimit])
+
   const load = useCallback(async () => {
     try {
-      const [memEntries, userEntries, config] = await Promise.all([
+      const [memEntries, userEntries] = await Promise.all([
         fetchEntries('memory', profile),
-        fetchEntries('user', profile),
-        window.hermesDesktop.api<any>({ method: 'GET', path: '/api/config' })
+        fetchEntries('user', profile)
       ])
 
       const memUsed = memEntries.reduce((sum: number, e: MemoryEntry) => sum + e.content.length, 0)
       const userUsed = userEntries.reduce((sum: number, e: MemoryEntry) => sum + e.content.length, 0)
-      const memLimit = config?.memory?.memory_char_limit ?? 0
-      const userLimit = config?.memory?.user_char_limit ?? 0
 
-      setState({ memoryUsed: memUsed, memoryLimit: memLimit, userUsed: userUsed, userLimit: userLimit, loading: false })
+      setState(s => ({ ...s, memoryUsed: memUsed, userUsed: userUsed, loading: false }))
     } catch {
       setState(s => ({ ...s, loading: false }))
     }
@@ -85,7 +93,7 @@ export function MemoryStats({ onRefresh, profile }: { onRefresh?: () => void; pr
         Agent: {formatBudget(state.memoryUsed, state.memoryLimit)}
       </span>
       <span className="text-[0.65rem] text-muted-foreground/60">
-        Profile: {formatBudget(state.userUsed, state.userLimit)}
+        User Profile: {formatBudget(state.userUsed, state.userLimit)}
       </span>
       {onRefresh && (
         <button
@@ -227,7 +235,7 @@ function MemoryCard({
 }
 
 /** Standalone panel for managing memory entries (add/edit/delete). Embeds inside ConfigSettings. */
-export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => void; profile?: string }) {
+export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit }: { onRefresh?: () => void; profile?: string; memoryLimit?: number; userLimit?: number }) {
   const [activeTab, setActiveTab] = useState<MemoryType>('memory')
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [counts, setCounts] = useState<{ memory: number; user: number }>({ memory: 0, user: 0 })
@@ -322,7 +330,7 @@ export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => v
   return (
     <div className="flex flex-col gap-4">
       {/* Stats bar above tabs */}
-      <MemoryStats onRefresh={onRefresh} profile={profile} />
+      <MemoryStats onRefresh={onRefresh} profile={profile} memoryLimit={memoryLimit} userLimit={userLimit} />
 
       {/* Tabs with count */}
       <SegmentedControl
@@ -341,7 +349,7 @@ export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => v
           <Input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder={`Search ${activeTab === 'memory' ? 'agent memories' : 'profile entries'}...`}
+            placeholder={`Search ${activeTab === 'memory' ? 'agent memories' : 'user profile entries'}...`}
             className="pl-9"
           />
           {query && (
@@ -390,7 +398,7 @@ export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => v
           className="justify-start gap-2"
         >
           <Plus className="size-3.5" />
-          Add {activeTab === 'memory' ? 'Agent Memory' : 'Profile Entry'}
+          Add {activeTab === 'memory' ? 'Agent Memory' : 'User Profile Entry'}
         </Button>
       )}
 
@@ -403,7 +411,7 @@ export function MemoryEntriesPanel({ onRefresh, profile }: { onRefresh?: () => v
       ) : filteredEntries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-(--ui-stroke-secondary) py-8 text-center">
           <p className="text-muted-foreground text-sm">
-            {query ? `No ${activeTab === 'memory' ? 'memories' : 'entries'} matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user'} entries yet.`}
+            {query ? `No ${activeTab === 'memory' ? 'memories' : 'user profile entries'} matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user profile'} entries yet.`}
           </p>
           {query && (
             <Button size="sm" variant="ghost" className="mt-2" onClick={() => setQuery('')}>
@@ -530,7 +538,7 @@ export function MemoryManagement({ config }: { config: Record<string, unknown> }
             (MEMORY.md / USER.md — always active)
           </span>
         </div>
-        <MemoryEntriesPanel profile={displayProfile} />
+        <MemoryEntriesPanel profile={displayProfile} memoryLimit={memConfig?.memory_char_limit as number} userLimit={memConfig?.user_char_limit as number} />
       </section>
 
       {/* External provider — shown when a non-builtin provider is selected */}
