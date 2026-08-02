@@ -86,13 +86,13 @@ export function MemoryStats({ onRefresh, profile, memoryLimit, userLimit }: { on
 
   return (
     <div className="mb-2 flex items-center gap-4 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/40 px-3 py-2">
-      <span className="text-[0.7rem] font-medium text-(--ui-text-secondary)">
+      <span className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">
         Budget usage
       </span>
-      <span className="text-[0.65rem] text-muted-foreground/60">
+      <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
         Agent: {formatBudget(state.memoryUsed, state.memoryLimit)}
       </span>
-      <span className="text-[0.65rem] text-muted-foreground/60">
+      <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
         User Profile: {formatBudget(state.userUsed, state.userLimit)}
       </span>
       {onRefresh && (
@@ -226,8 +226,8 @@ function MemoryCard({
       {/* Footer: metadata */}
       {!editing && (
         <div className="flex items-center gap-3 border-t border-(--ui-stroke-secondary) px-4 py-1.5">
-          <span className="text-[0.6rem] text-muted-foreground/50">{wordCount} words</span>
-          <span className="text-[0.6rem] text-muted-foreground/50">{entry.content.length} chars</span>
+          <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">{wordCount} words</span>
+          <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">{entry.content.length} chars</span>
         </div>
       )}
     </div>
@@ -337,7 +337,7 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
         onChange={id => { setActiveTab(id); setQuery('') }}
         options={[
           { id: 'memory', label: `Agent Memories${counts.memory ? ` (${counts.memory})` : ''}` },
-          { id: 'user', label: `User Profile${counts.user ? ` (${counts.user})` : ''}` },
+          { id: 'user', label: `User Profile Memories${counts.user ? ` (${counts.user})` : ''}` },
         ]}
         value={activeTab}
       />
@@ -349,7 +349,7 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
           <Input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder={`Search ${activeTab === 'memory' ? 'agent memories' : 'user profile entries'}...`}
+            placeholder={`Search ${activeTab === 'memory' ? 'agent memories' : 'user profile memories'}...`}
             className="pl-9"
           />
           {query && (
@@ -398,7 +398,7 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
           className="justify-start gap-2"
         >
           <Plus className="size-3.5" />
-          Add {activeTab === 'memory' ? 'Agent Memory' : 'User Profile Entry'}
+          Add {activeTab === 'memory' ? 'Agent Memory' : 'User Profile Memory'}
         </Button>
       )}
 
@@ -411,7 +411,7 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
       ) : filteredEntries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-(--ui-stroke-secondary) py-8 text-center">
           <p className="text-muted-foreground text-sm">
-            {query ? `No ${activeTab === 'memory' ? 'memories' : 'user profile entries'} matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user profile'} entries yet.`}
+            {query ? `No ${activeTab === 'memory' ? 'memories' : 'user profile memories'} matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user profile'} memories yet.`}
           </p>
           {query && (
             <Button size="sm" variant="ghost" className="mt-2" onClick={() => setQuery('')}>
@@ -534,8 +534,8 @@ export function MemoryManagement({ config }: { config: Record<string, unknown> }
         <div className="mb-3 flex items-center gap-2">
           <Brain className="size-3.5 text-(--ui-text-secondary)" />
           <h3 className="text-sm font-medium text-foreground">Built-in Memory</h3>
-          <span className="text-[0.65rem] text-muted-foreground/60">
-            (MEMORY.md / USER.md — always active)
+          <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+            (MEMORY.md / USER.md)
           </span>
         </div>
         <MemoryEntriesPanel profile={displayProfile} memoryLimit={memConfig?.memory_char_limit as number} userLimit={memConfig?.user_char_limit as number} />
