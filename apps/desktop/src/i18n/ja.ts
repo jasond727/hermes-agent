@@ -236,7 +236,9 @@ export const ja = defineLocale({
       archivedChats: 'アーカイブ済みチャット',
       about: '情報',
       billing: '請求',
-      notifications: '通知'
+      notifications: '通知',
+      memory: 'メモリ',
+      context: 'コンテキスト'
     },
     notifications: {
       title: '通知',

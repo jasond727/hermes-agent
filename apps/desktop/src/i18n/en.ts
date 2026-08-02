@@ -348,7 +348,9 @@ export const en: Translations = {
       about: 'About',
       billing: 'Billing',
       notifications: 'Notifications',
-      plugins: 'Plugins'
+      plugins: 'Plugins',
+      memory: 'Memory',
+      context: 'Context'
     },
     plugins: {
       title: 'Desktop plugins',

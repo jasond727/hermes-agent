@@ -10,11 +10,13 @@ import {
   Archive,
   BarChart3,
   Bell,
+  Brain,
   Download,
   Globe,
   Info,
   Keyboard,
   KeyRound,
+  Layers3,
   Package,
   RefreshCw,
   Settings2,
@@ -36,6 +38,7 @@ import { BillingSettings } from './billing'
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
+import { JasonSettings } from './jason-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { NotificationsSettings } from './notifications-settings'
@@ -54,6 +57,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'billing',
   'plugins',
   'sessions',
+  'jason',
   'about'
 ]
 
@@ -81,6 +85,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   // sub-view is deep-linkable and survives a refresh.
   const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
   const [keysView] = useRouteEnumParam<KeysView>('kview', KEYS_VIEWS, 'tools')
+  // Config section sub-views (Memory & Context → Memory / Context fields).
+  const CONFIG_SUB_VIEWS = ['memory', 'context'] as const
+  const configSubView = (() => {
+    const raw = new URLSearchParams(search).get('cview')
+    if (raw === 'memory' || raw === 'context') return raw
+    return 'memory'
+  })()
 
   // Jump to a section + its sub-view in one navigate. Two sequential setters
   // would each read the same stale `search` and the second would clobber the
@@ -108,6 +119,11 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const openKeysView = useCallback((view: KeysView) => openSubView('keys', 'kview', view, 'tools'), [openSubView])
+
+  const openConfigSubView = useCallback(
+    (view: (typeof CONFIG_SUB_VIEWS)[number]) => openSubView('config:memory', 'cview', view, 'memory'),
+    [openSubView]
+  )
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -144,6 +160,33 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const navGroups: OverlayNavGroup[] = useMemo(
     () => [
       ...SECTIONS.map(s => {
+        if (s.id === 'memory') {
+          return {
+            active: activeView === 'config:memory',
+            children: [
+              {
+                active: activeView === 'config:memory' && configSubView === 'memory',
+                icon: Brain,
+                id: 'cview:memory',
+                label: t.settings.nav.memory ?? 'Memory',
+                onSelect: () => openConfigSubView('memory')
+              },
+              {
+                active: activeView === 'config:memory' && configSubView === 'context',
+                icon: Layers3,
+                id: 'cview:context',
+                label: t.settings.nav.context ?? 'Context',
+                onSelect: () => openConfigSubView('context')
+              }
+            ],
+            gapBefore: true,
+            icon: Brain,
+            id: 'config:memory',
+            label: t.settings.sections.memory ?? 'Memory & Context',
+            onSelect: () => openConfigSubView('memory')
+          }
+        }
+
         const view = `config:${s.id}` as SettingsViewId
 
         return {
@@ -251,6 +294,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('sessions')
       },
       {
+        active: activeView === 'jason',
+        icon: codiconIcon('person'),
+        id: 'jason',
+        label: 'Jason',
+        onSelect: () => setActiveView('jason')
+      },
+      {
         active: activeView === 'about',
         gapBefore: true,
         icon: Info,
@@ -259,7 +309,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('about')
       }
     ],
-    [activeView, keysView, providerView, t, setActiveView, openProviderView, openKeysView]
+    [activeView, configSubView, keysView, providerView, t, setActiveView, openProviderView, openKeysView, openConfigSubView]
   )
 
   const navFooter = (
@@ -310,6 +360,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           ) : activeView.startsWith('config:') ? (
             <ConfigSettings
               activeSectionId={activeView.slice('config:'.length)}
+              configSubView={activeView === 'config:memory' ? configSubView : undefined}
               importInputRef={importInputRef}
               onConfigSaved={onConfigSaved}
               onMainModelChanged={onMainModelChanged}
@@ -330,6 +381,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             <BillingSettings />
           ) : activeView === 'plugins' ? (
             <PluginsSettings />
+          ) : activeView === 'jason' ? (
+            <JasonSettings />
           ) : (
             <SessionsSettings />
           )}

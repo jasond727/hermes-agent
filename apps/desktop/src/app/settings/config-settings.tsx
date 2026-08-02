@@ -57,11 +57,13 @@ export function voiceFieldVisible(key: string, config: HermesConfigRecord): bool
 
 export function ConfigSettings({
   activeSectionId,
+  configSubView,
   onConfigSaved,
   onMainModelChanged,
   importInputRef
 }: {
   activeSectionId: string
+  configSubView?: 'memory' | 'context'
   onConfigSaved?: () => void
   onMainModelChanged?: (provider: string, model: string) => void
   importInputRef: React.RefObject<HTMLInputElement | null>
@@ -293,7 +295,11 @@ export function ConfigSettings({
     return <SettingsSkeleton sections={[{ rows: 6 }]} />
   }
 
-  const visibleFields = activeSectionId === 'voice' ? fields.filter(([key]) => voiceFieldVisible(key, config)) : fields
+  const visibleFields = activeSectionId === 'voice'
+    ? fields.filter(([key]) => voiceFieldVisible(key, config))
+    : activeSectionId === 'memory' && configSubView
+      ? fields.filter(([key]) => configSubView === 'memory' ? key.startsWith('memory.') : key.startsWith('context.') || key.startsWith('compression.'))
+      : fields
 
   return (
     <SettingsContent>

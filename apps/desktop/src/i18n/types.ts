@@ -302,6 +302,8 @@ export interface Translations {
       billing: string
       notifications: string
       plugins: string
+      memory: string
+      context: string
     }
     plugins: {
       title: string

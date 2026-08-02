@@ -300,7 +300,9 @@ export const ar = defineLocale({
       about: 'حول',
       notifications: 'الإشعارات',
       keybinds: 'اختصارات لوحة المفاتيح',
-      plugins: 'الإضافات'
+      plugins: 'الإضافات',
+      memory: 'الذاكرة',
+      context: 'السياق'
     },
     plugins: {
       title: 'إضافات سطح المكتب',

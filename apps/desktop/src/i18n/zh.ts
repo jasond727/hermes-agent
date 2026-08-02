@@ -339,7 +339,9 @@ export const zh: Translations = {
       about: '关于',
       billing: '账单',
       notifications: '通知',
-      plugins: '插件'
+      plugins: '插件',
+      memory: '记忆',
+      context: '上下文'
     },
     plugins: {
       title: '桌面插件',
