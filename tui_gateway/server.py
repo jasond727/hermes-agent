@@ -3224,6 +3224,20 @@ def _pairing_sig():
     return sig
 
 
+def _memory_sig():
+    """Newest mtime across MEMORY.md and USER.md — moves when either file is
+    written by the agent (memory_tool.py) or the desktop (web_server CRUD)."""
+    home = _watcher_home() / "memories"
+    sig = None
+    for name in ("MEMORY.md", "USER.md"):
+        try:
+            mtime = (home / name).stat().st_mtime_ns
+        except OSError:
+            continue
+        sig = mtime if sig is None else max(sig, mtime)
+    return sig
+
+
 # Watched change signals: event → (check interval, signature fn, payload fn).
 # Signatures are stat/dict-lookup cheap, same bar as the skin watcher; the
 # check interval keeps the pricier probes (pet resolves the active sheet off
@@ -3234,13 +3248,14 @@ _CHANGE_WATCHES: dict[str, tuple[float, Any, Any]] = {
     "sessions.changed": (0.5, _sessions_sig, lambda: {}),
     "platforms.changed": (2.0, _platforms_sig, lambda: {}),
     "pairing.changed": (2.0, _pairing_sig, lambda: {}),
+    "memory.changed": (2.0, _memory_sig, lambda: {}),
 }
 
 # state.db moves on every message append during a streaming turn, and the
 # gateway rewrites gateway_state.json for in-flight-count bookkeeping; the
 # floor coalesces those bursts to one broadcast per window (trailing edge
 # included — a floored change keeps its old signature and re-fires next tick).
-_CHANGE_BROADCAST_FLOOR_S = {"sessions.changed": 2.0, "platforms.changed": 5.0}
+_CHANGE_BROADCAST_FLOOR_S = {"sessions.changed": 2.0, "platforms.changed": 5.0, "memory.changed": 2.0}
 
 _change_sigs: dict[str, Any] = {}
 _change_checked_at: dict[str, float] = {}

@@ -20,6 +20,7 @@ export const $cronChangeTick = atom(0)
 export const $sessionsChangeTick = atom(0)
 export const $platformsChangeTick = atom(0)
 export const $pairingChangeTick = atom(0)
+export const $memoryChangeTick = atom(0)
 
 /** `pet.info.meta`-shaped payload carried on `pet.changed` — lets the pet skip
  *  the heavy sprite refetch when the broadcast already says enabled=false. */
@@ -55,6 +56,10 @@ export function notifyPlatformsChanged(): void {
 
 export function notifyPairingChanged(): void {
   $pairingChangeTick.set($pairingChangeTick.get() + 1)
+}
+
+export function notifyMemoryChanged(): void {
+  $memoryChangeTick.set($memoryChangeTick.get() + 1)
 }
 
 /** Reset on gateway wipe/reconnect — a new backend re-advertises capability on

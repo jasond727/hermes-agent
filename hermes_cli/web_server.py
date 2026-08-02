@@ -12570,9 +12570,11 @@ async def reset_memory(body: MemoryReset):
 #
 # MEMORY.md entries are separated by "\n§\n".  We parse them into an indexed
 # list so the desktop app can add / edit / delete individual entries.
+#
+# Mutations (POST/PUT/DELETE) go through MemoryStore from tools/memory_tool.py
+# which provides file locking (fcntl/msvcrt) for read-modify-write safety.
+# This prevents race conditions when the agent and desktop write concurrently.
 # ---------------------------------------------------------------------------
-
-_ENTRY_DELIMITER = "\n§\n"
 
 
 class MemoryEntryCreate(BaseModel):
@@ -12580,115 +12582,64 @@ class MemoryEntryCreate(BaseModel):
 
 
 class MemoryEntryUpdate(BaseModel):
-    index: int
-    content: str
+    old_content: str  # the entry text to match (full text = unique match)
+    content: str       # the replacement text
 
 
 class MemoryEntryDelete(BaseModel):
-    index: int
+    content: str  # the entry text to remove (full text = unique match)
+
+
+def _parse_memory_file(target: str) -> List[str]:
+    """Read and parse a memory file into entries (read-only, no lock needed)."""
+    from tools.memory_tool import MemoryStore
+    path = MemoryStore._path_for(target)
+    if not path.exists():
+        return []
+    return MemoryStore._read_file(path)
 
 
 @app.get("/api/memory/entries")
 async def get_memory_entries(target: str = "memory", profile: Optional[str] = None):
     """Return parsed entries from MEMORY.md or USER.md."""
     with _profile_scope(profile):
-        fname = "MEMORY.md" if target == "memory" else "USER.md"
-        mem_dir = get_hermes_home() / "memories"
-        path = mem_dir / fname
-
-        if not path.exists():
-            return {"entries": [], "total": 0}
-
-        raw = path.read_text(encoding="utf-8", errors="replace").strip()
-        if not raw:
-            return {"entries": [], "total": 0}
-
-        # Split on § delimiter; strip each entry
-        entries = [e.strip() for e in raw.split(_ENTRY_DELIMITER) if e.strip()]
+        entries = _parse_memory_file(target)
         return {"entries": entries, "total": len(entries)}
 
 
 @app.post("/api/memory/entries")
 async def add_memory_entry(body: MemoryEntryCreate, target: str = "memory", profile: Optional[str] = None):
-    """Append a new memory entry."""
+    """Append a new memory entry (uses MemoryStore with file locking)."""
+    from tools.memory_tool import MemoryStore
     with _profile_scope(profile):
-        fname = "MEMORY.md" if target == "memory" else "USER.md"
-        mem_dir = get_hermes_home() / "memories"
-        mem_dir.mkdir(parents=True, exist_ok=True)
-        path = mem_dir / fname
-
-        existing = ""
-        if path.exists():
-            existing = path.read_text(encoding="utf-8", errors="replace").strip()
-
-        if existing:
-            new_content = _ENTRY_DELIMITER + body.content.strip()
-        else:
-            new_content = body.content.strip()
-
-        # Atomic write
-        from utils import atomic_write_text
-        atomic_write_text(path, existing + new_content if existing else new_content, encoding="utf-8")
+        store = MemoryStore()
+        result = store.add(target, body.content.strip())
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to add entry"))
         return {"ok": True}
 
 
-@app.put("/api/memory/entries/{index}")
-async def update_memory_entry(index: int, body: MemoryEntryUpdate, target: str = "memory", profile: Optional[str] = None):
-    """Replace an entry at the given index."""
-    if body.index != index:
-        raise HTTPException(status_code=400, detail="index mismatch")
-
+@app.put("/api/memory/entries")
+async def update_memory_entry(body: MemoryEntryUpdate, target: str = "memory", profile: Optional[str] = None):
+    """Replace an entry by matching old_content text (uses MemoryStore with file locking)."""
+    from tools.memory_tool import MemoryStore
     with _profile_scope(profile):
-        fname = "MEMORY.md" if target == "memory" else "USER.md"
-        mem_dir = get_hermes_home() / "memories"
-        path = mem_dir / fname
-
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f"{fname} not found")
-
-        raw = path.read_text(encoding="utf-8", errors="replace").strip()
-        if not raw:
-            raise HTTPException(status_code=404, detail="No entries found")
-
-        entries = [e.strip() for e in raw.split(_ENTRY_DELIMITER) if e.strip()]
-
-        if index < 0 or index >= len(entries):
-            raise HTTPException(status_code=404, detail=f"Entry {index} not found")
-
-        entries[index] = body.content.strip()
-        new_content = _ENTRY_DELIMITER.join(entries)
-        from utils import atomic_write_text
-        atomic_write_text(path, new_content, encoding="utf-8")
+        store = MemoryStore()
+        result = store.replace(target, body.old_content.strip(), body.content.strip())
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to replace entry"))
         return {"ok": True}
 
 
-@app.delete("/api/memory/entries/{index}")
-async def delete_memory_entry(index: int, target: str = "memory", profile: Optional[str] = None):
-    """Remove an entry at the given index."""
+@app.delete("/api/memory/entries")
+async def delete_memory_entry(body: MemoryEntryDelete, target: str = "memory", profile: Optional[str] = None):
+    """Remove an entry by matching content text (uses MemoryStore with file locking)."""
+    from tools.memory_tool import MemoryStore
     with _profile_scope(profile):
-        fname = "MEMORY.md" if target == "memory" else "USER.md"
-        mem_dir = get_hermes_home() / "memories"
-        path = mem_dir / fname
-
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f"{fname} not found")
-
-        raw = path.read_text(encoding="utf-8", errors="replace").strip()
-        if not raw:
-            raise HTTPException(status_code=404, detail="No entries found")
-
-        entries = [e.strip() for e in raw.split(_ENTRY_DELIMITER) if e.strip()]
-
-        if index < 0 or index >= len(entries):
-            raise HTTPException(status_code=404, detail=f"Entry {index} not found")
-
-        entries.pop(index)
-        new_content = _ENTRY_DELIMITER.join(entries) if entries else ""
-        from utils import atomic_write_text
-        if new_content:
-            atomic_write_text(path, new_content, encoding="utf-8")
-        else:
-            path.unlink(missing_ok=True)
+        store = MemoryStore()
+        result = store.remove(target, body.content.strip())
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to remove entry"))
         return {"ok": True}
 
 

@@ -10,6 +10,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 import { $activeProfile, $profiles, normalizeProfileKey, refreshProfiles } from '@/store/profile'
+import { $memoryChangeTick } from '@/store/live-sync'
 import { isExternalMemoryProvider } from './helpers'
 import { MemoryConnect } from './memory/connect'
 import { ProviderConfigPanel } from './memory/provider-config-panel'
@@ -69,6 +70,12 @@ export function MemoryStats({ onRefresh, profile, memoryLimit, userLimit }: { on
     return () => { cancelled = true }
   }, [load])
 
+  // Event-driven budget refresh on memory.changed
+  const memoryTick = useStore($memoryChangeTick)
+  useEffect(() => {
+    void load()
+  }, [memoryTick, load])
+
   const formatBudget = (used: number, limit: number) => {
     if (!limit) return `${used} chars`
     const pct = Math.min((used / limit) * 100, 100)
@@ -118,20 +125,21 @@ async function addEntry(type: MemoryType, content: string, profile?: string): Pr
   })
 }
 
-async function updateEntry(type: MemoryType, index: number, content: string, profile?: string): Promise<void> {
+async function updateEntry(type: MemoryType, oldContent: string, content: string, profile?: string): Promise<void> {
   const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   await window.hermesDesktop.api<{ ok: boolean }>({
     method: 'PUT',
-    path: `/api/memory/entries/${index}?target=${type}${profileParam}`,
-    body: { content }
+    path: `/api/memory/entries?target=${type}${profileParam}`,
+    body: { old_content: oldContent, content }
   })
 }
 
-async function deleteEntry(type: MemoryType, index: number, profile?: string): Promise<void> {
+async function deleteEntry(type: MemoryType, content: string, profile?: string): Promise<void> {
   const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
   await window.hermesDesktop.api<{ ok: boolean }>({
     method: 'DELETE',
-    path: `/api/memory/entries/${index}${profileParam}`
+    path: `/api/memory/entries?target=${type}${profileParam}`,
+    body: { content }
   })
 }
 
@@ -139,10 +147,14 @@ function MemoryCard({
   entry,
   onSave,
   onDelete,
+  onEditStart,
+  onEditEnd,
 }: {
   entry: MemoryEntry
   onSave: (index: number, content: string) => void
   onDelete: (index: number) => void
+  onEditStart: (index: number) => void
+  onEditEnd: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(entry.content)
@@ -151,12 +163,14 @@ function MemoryCard({
     if (draft.trim()) {
       onSave(entry.index, draft.trim())
       setEditing(false)
+      onEditEnd()
     }
   }
 
   const handleCancel = () => {
     setDraft(entry.content)
     setEditing(false)
+    onEditEnd()
   }
 
   const wordCount = entry.content.split(/\s+/).filter(Boolean).length
@@ -166,13 +180,13 @@ function MemoryCard({
       {/* Header: index + actions */}
       <div className="flex items-center justify-between border-b border-(--ui-stroke-secondary) px-4 py-2">
         <span className="font-mono text-[0.65rem] font-medium text-muted-foreground">
-          #{entry.index}
+          #{entry.index + 1}
         </span>
         <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Button
             size="icon-sm"
             variant="ghost"
-            onClick={() => setEditing(true)}
+            onClick={() => { setEditing(true); onEditStart(entry.index) }}
             title="Edit"
             className="h-6 w-6"
           >
@@ -243,6 +257,7 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
   const [newContent, setNewContent] = useState('')
   const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)  // pause poll while editing
 
   const loadEntries = useCallback(async () => {
     try {
@@ -268,6 +283,15 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
       } catch { /* ignore */ }
     })()
   }, [loadEntries])
+
+  // Event-driven refresh: the backend broadcasts memory.changed when MEMORY.md/USER.md moves.
+  // Skip refresh while an entry is being edited to avoid losing the draft.
+  const memoryTick = useStore($memoryChangeTick)
+  useEffect(() => {
+    if (editingIndex === null) {
+      void loadEntries()
+    }
+  }, [memoryTick, editingIndex, loadEntries])
 
   // Reload both counts when adding so the other tab stays fresh
   const reloadAllCounts = useCallback(async () => {
@@ -297,7 +321,8 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
 
   const handleSave = async (index: number, content: string) => {
     try {
-      await updateEntry(activeTab, index, content, profile)
+      const oldContent = entries.find(e => e.index === index)?.content ?? ''
+      await updateEntry(activeTab, oldContent, content, profile)
       await loadEntries()
       onRefresh?.()
       notify({ message: 'Memory updated' })
@@ -309,7 +334,8 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
   const handleDelete = async (index: number) => {
     if (!window.confirm('Delete this memory?')) return
     try {
-      await deleteEntry(activeTab, index, profile)
+      const content = entries.find(e => e.index === index)?.content ?? ''
+      await deleteEntry(activeTab, content, profile)
       await loadEntries()
       await reloadAllCounts()
       onRefresh?.()
@@ -437,6 +463,8 @@ export function MemoryEntriesPanel({ onRefresh, profile, memoryLimit, userLimit 
                 entry={entry}
                 onSave={handleSave}
                 onDelete={handleDelete}
+                onEditStart={setEditingIndex}
+                onEditEnd={() => setEditingIndex(null)}
               />
             ))}
           </div>
