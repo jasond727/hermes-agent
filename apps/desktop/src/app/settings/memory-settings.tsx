@@ -13,7 +13,6 @@ import { $activeProfile, $profiles, normalizeProfileKey, refreshProfiles } from 
 import { isExternalMemoryProvider } from './helpers'
 import { MemoryConnect } from './memory/connect'
 import { ProviderConfigPanel } from './memory/provider-config-panel'
-import type { ProfileInfo } from '@/types/hermes'
 
 type MemoryType = 'memory' | 'user'
 
@@ -29,15 +28,6 @@ async function fetchEntries(type: MemoryType, profile?: string): Promise<MemoryE
     path: `/api/memory/entries?target=${type}${profileParam}`
   })
   return (resp.entries || []).map((content, index) => ({ index, content }))
-}
-
-async function fetchCount(type: MemoryType, profile?: string): Promise<number> {
-  const profileParam = profile ? `&profile=${encodeURIComponent(profile)}` : ''
-  const resp = await window.hermesDesktop.api<{ entries: string[]; total: number }>({
-    method: 'GET',
-    path: `/api/memory/entries?target=${type}${profileParam}`
-  })
-  return resp.total ?? resp.entries?.length ?? 0
 }
 
 /** Lightweight stats bar showing budget usage (chars used vs limit). Renders above the segmented tabs. */
