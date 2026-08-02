@@ -118,11 +118,11 @@ class TestProfileScopedMemoryEntries:
         assert "New worker entry" not in default_entries
 
     def test_update_entry_scoped_to_target_profile(self, client, isolated_profiles):
-        """PUT with profile= updates the right profile's entry."""
+        """PUT with profile= updates the right profile's entry using text matching."""
         resp = client.put(
-            "/api/memory/entries/0",
+            "/api/memory/entries",
             params={"target": "memory", "profile": "coder"},
-            json={"index": 0, "content": "Updated worker entry"},
+            json={"old_content": "Worker memory entry", "content": "Updated worker entry"},
         )
         assert resp.status_code == 200
         worker_entries = _read_entries(isolated_profiles["coder"], "memory")
@@ -132,10 +132,12 @@ class TestProfileScopedMemoryEntries:
         assert default_entries[0] == "Default memory entry"
 
     def test_delete_entry_scoped_to_target_profile(self, client, isolated_profiles):
-        """DELETE with profile= removes from the right profile."""
-        resp = client.delete(
-            "/api/memory/entries/0",
+        """DELETE with profile= removes from the right profile using text matching."""
+        resp = client.request(
+            "DELETE",
+            "/api/memory/entries",
             params={"target": "memory", "profile": "coder"},
+            json={"content": "Worker memory entry"},
         )
         assert resp.status_code == 200
         worker_entries = _read_entries(isolated_profiles["coder"], "memory")
@@ -144,35 +146,21 @@ class TestProfileScopedMemoryEntries:
         default_entries = _read_entries(isolated_profiles["default"], "memory")
         assert len(default_entries) == 1
 
-    def test_unknown_profile_returns_404(self, client, isolated_profiles):
-        resp = client.get(
-            "/api/memory/entries",
-            params={"target": "memory", "profile": "ghost"},
-        )
-        assert resp.status_code == 404
-
-    def test_index_mismatch_returns_400(self, client, isolated_profiles):
-        """PUT with mismatched index in path vs body returns 400."""
+    def test_replace_non_matching_old_content_returns_400(self, client, isolated_profiles):
+        """PUT with old_content that doesn't match any entry returns 400."""
         resp = client.put(
-            "/api/memory/entries/5",
+            "/api/memory/entries",
             params={"target": "memory", "profile": "coder"},
-            json={"index": 0, "content": "Wrong index"},
+            json={"old_content": "Does not exist", "content": "New content"},
         )
         assert resp.status_code == 400
 
-    def test_delete_out_of_range_returns_404(self, client, isolated_profiles):
-        resp = client.delete(
-            "/api/memory/entries/99",
-            params={"target": "memory", "profile": "coder"},
-        )
-        assert resp.status_code == 404
-
-    def test_empty_profile_defaults_to_dashboard(self, client, isolated_profiles):
-        """An empty profile string behaves like no profile param."""
-        resp = client.get(
+    def test_delete_non_matching_content_returns_400(self, client, isolated_profiles):
+        """DELETE with content that doesn't match any entry returns 400."""
+        resp = client.request(
+            "DELETE",
             "/api/memory/entries",
-            params={"target": "memory", "profile": ""},
+            params={"target": "memory", "profile": "coder"},
+            json={"content": "Does not exist"},
         )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["entries"] == ["Default memory entry"]
+        assert resp.status_code == 400

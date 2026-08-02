@@ -15438,3 +15438,127 @@ def test_prompt_submit_passes_persist_user_message_to_agent(monkeypatch):
         assert captured.get("persist_user_message") == "hi"
     finally:
         server._sessions.pop("sid", None)
+
+
+class TestMemoryChangeWatcher:
+    """Verify memory.changed fires when MEMORY.md or USER.md is modified."""
+
+    def test_memory_sig_detects_memory_md_change(self, tmp_path, monkeypatch):
+        from tui_gateway.server import _memory_sig
+
+        home = tmp_path / ".hermes"
+        mem_dir = home / "memories"
+        mem_dir.mkdir(parents=True)
+        (mem_dir / "MEMORY.md").write_text("entry one", encoding="utf-8")
+
+        monkeypatch.setattr(server, "_hermes_home", home)
+        monkeypatch.setattr(server, "get_hermes_home_override", lambda: None)
+
+        sig_before = _memory_sig()
+        assert sig_before is not None
+
+        # Modify the file
+        import time
+        time.sleep(0.05)  # ensure mtime changes
+        (mem_dir / "MEMORY.md").write_text("entry one\n§\nentry two", encoding="utf-8")
+
+        sig_after = _memory_sig()
+        assert sig_after != sig_before
+
+    def test_memory_sig_detects_user_md_change(self, tmp_path, monkeypatch):
+        from tui_gateway.server import _memory_sig
+
+        home = tmp_path / ".hermes"
+        mem_dir = home / "memories"
+        mem_dir.mkdir(parents=True)
+        (mem_dir / "USER.md").write_text("user entry", encoding="utf-8")
+
+        monkeypatch.setattr(server, "_hermes_home", home)
+        monkeypatch.setattr(server, "get_hermes_home_override", lambda: None)
+
+        sig_before = _memory_sig()
+        assert sig_before is not None
+
+        import time
+        time.sleep(0.05)
+        (mem_dir / "USER.md").write_text("user entry\n§\nnew entry", encoding="utf-8")
+
+        sig_after = _memory_sig()
+        assert sig_after != sig_before
+
+    def test_memory_sig_watches_profile_memories(self, tmp_path, monkeypatch):
+        from tui_gateway.server import _memory_sig
+
+        home = tmp_path / ".hermes"
+        mem_dir = home / "memories"
+        mem_dir.mkdir(parents=True)
+        (mem_dir / "MEMORY.md").write_text("default entry", encoding="utf-8")
+
+        profiles_root = home / "profiles"
+        profile_mem = profiles_root / "coder" / "memories"
+        profile_mem.mkdir(parents=True)
+        (profile_mem / "MEMORY.md").write_text("profile entry", encoding="utf-8")
+
+        monkeypatch.setattr(server, "_hermes_home", home)
+        monkeypatch.setattr(server, "get_hermes_home_override", lambda: None)
+        monkeypatch.setattr(
+            "hermes_cli.profiles._get_profiles_root", lambda: profiles_root
+        )
+
+        sig_before = _memory_sig()
+        assert sig_before is not None
+
+        import time
+        time.sleep(0.05)
+        (profile_mem / "MEMORY.md").write_text("profile entry updated", encoding="utf-8")
+
+        sig_after = _memory_sig()
+        assert sig_after != sig_before
+
+    def test_memory_sig_watches_multiple_profiles(self, tmp_path, monkeypatch):
+        """Sig changes when any of several profiles' memories are modified."""
+        from tui_gateway.server import _memory_sig
+
+        home = tmp_path / ".hermes"
+        mem_dir = home / "memories"
+        mem_dir.mkdir(parents=True)
+        (mem_dir / "MEMORY.md").write_text("default entry", encoding="utf-8")
+
+        profiles_root = home / "profiles"
+        for name in ("coder", "designer", "researcher"):
+            profile_mem = profiles_root / name / "memories"
+            profile_mem.mkdir(parents=True)
+            (profile_mem / "MEMORY.md").write_text(f"{name} entry", encoding="utf-8")
+
+        monkeypatch.setattr(server, "_hermes_home", home)
+        monkeypatch.setattr(server, "get_hermes_home_override", lambda: None)
+        monkeypatch.setattr(
+            "hermes_cli.profiles._get_profiles_root", lambda: profiles_root
+        )
+
+        sig_before = _memory_sig()
+
+        import time
+        time.sleep(0.05)
+        (profiles_root / "designer" / "memories" / "MEMORY.md").write_text(
+            "designer entry updated", encoding="utf-8"
+        )
+
+        sig_after = _memory_sig()
+        assert sig_after != sig_before
+
+    def test_memory_sig_returns_none_when_no_memories(self, tmp_path, monkeypatch):
+        from tui_gateway.server import _memory_sig
+
+        home = tmp_path / ".hermes"
+        home.mkdir()
+
+        monkeypatch.setattr(server, "_hermes_home", home)
+        monkeypatch.setattr(server, "get_hermes_home_override", lambda: None)
+        monkeypatch.setattr(
+            "hermes_cli.profiles._get_profiles_root", lambda: Path("/nonexistent")
+        )
+
+        sig = _memory_sig()
+        assert sig is None
+
