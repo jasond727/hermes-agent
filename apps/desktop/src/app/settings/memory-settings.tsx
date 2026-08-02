@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Codicon } from '@/components/ui/codicon'
-import { Badge } from '@/components/ui/badge'
-import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Trash2, Plus, Save, X, Search } from '@/lib/icons'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 
 type MemoryType = 'memory' | 'user'
@@ -74,69 +74,73 @@ function MemoryCard({
   const wordCount = entry.content.split(/\s+/).filter(Boolean).length
 
   return (
-    <div className="group relative rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/50 p-4 transition-all hover:border-(--ui-stroke-primary) hover:bg-(--ui-bg-secondary)/80 hover:shadow-sm">
-      {/* Index badge */}
-      <div className="absolute -left-1.5 -top-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <Badge variant="muted" className="size-6 rounded-full p-0 text-[0.6rem] font-mono">
-          {entry.index}
-        </Badge>
+    <div className="group flex flex-col rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary)/50 transition-all hover:border-(--ui-stroke-primary) hover:bg-(--ui-bg-secondary)/80 hover:shadow-sm">
+      {/* Header: index + actions */}
+      <div className="flex items-center justify-between border-b border-(--ui-stroke-secondary) px-4 py-2">
+        <span className="font-mono text-[0.65rem] font-medium text-muted-foreground">
+          #{entry.index}
+        </span>
+        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setEditing(true)}
+            title="Edit"
+            className="h-6 w-6"
+          >
+            <Codicon name="edit" size="0.85em" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onDelete(entry.index)}
+            title="Delete"
+            className="h-6 w-6 hover:text-destructive"
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
       </div>
 
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          <Textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            rows={3}
-            className="min-h-0 resize-y rounded-lg border-(--ui-stroke-primary) bg-(--ui-chat-surface-background)"
-            autoFocus
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-[0.65rem] text-muted-foreground/60">
-              {draft.length} chars
-            </span>
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="size-3.5" />
-              </Button>
-              <Button size="sm" variant="default" onClick={handleSave}>
-                <Save className="size-3.5" />
-                Save
-              </Button>
+      {/* Body */}
+      <div className="flex flex-1 flex-col p-4">
+        {editing ? (
+          <div className="flex flex-col gap-2">
+            <Textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              rows={3}
+              className="min-h-0 resize-y rounded-lg border-(--ui-stroke-primary) bg-(--ui-chat-surface-background)"
+              autoFocus
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[0.65rem] text-muted-foreground/60">
+                {draft.length} chars
+              </span>
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="ghost" onClick={handleCancel}>
+                  <X className="size-3.5" />
+                </Button>
+                <Button size="sm" variant="default" onClick={handleSave}>
+                  <Save className="size-3.5" />
+                  Save
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <p className="pr-16 whitespace-pre-wrap text-[0.875rem] leading-relaxed text-(--ui-text-primary)">
+        ) : (
+          <p className="flex-1 whitespace-pre-wrap text-[0.8125rem] leading-relaxed text-(--ui-text-primary)">
             {entry.content}
           </p>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[0.65rem] text-muted-foreground/60">
-              {wordCount} words · {entry.content.length} chars
-            </span>
-            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => setEditing(true)}
-                title="Edit"
-                className="h-7 w-7"
-              >
-                <Codicon name="edit" size="1em" />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => onDelete(entry.index)}
-                title="Delete"
-                className="h-7 w-7 hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-        </>
+        )}
+      </div>
+
+      {/* Footer: metadata */}
+      {!editing && (
+        <div className="flex items-center gap-3 border-t border-(--ui-stroke-secondary) px-4 py-1.5">
+          <span className="text-[0.6rem] text-muted-foreground/50">{wordCount} words</span>
+          <span className="text-[0.6rem] text-muted-foreground/50">{entry.content.length} chars</span>
+        </div>
       )}
     </div>
   )
@@ -146,6 +150,7 @@ function MemoryCard({
 export function MemoryEntriesPanel() {
   const [activeTab, setActiveTab] = useState<MemoryType>('memory')
   const [entries, setEntries] = useState<MemoryEntry[]>([])
+  const [counts, setCounts] = useState<{ memory: number; user: number }>({ memory: 0, user: 0 })
   const [loading, setLoading] = useState(true)
   const [newContent, setNewContent] = useState('')
   const [adding, setAdding] = useState(false)
@@ -156,6 +161,7 @@ export function MemoryEntriesPanel() {
       setLoading(true)
       const data = await fetchEntries(activeTab)
       setEntries(data)
+      setCounts(prev => ({ ...prev, [activeTab]: data.length }))
     } catch (err) {
       notifyError(err, 'Failed to load memories')
     } finally {
@@ -167,6 +173,17 @@ export function MemoryEntriesPanel() {
     loadEntries()
   }, [loadEntries])
 
+  // Reload both counts when adding so the other tab stays fresh
+  const reloadAllCounts = useCallback(async () => {
+    try {
+      const [memData, userData] = await Promise.all([
+        fetchEntries('memory'),
+        fetchEntries('user')
+      ])
+      setCounts({ memory: memData.length, user: userData.length })
+    } catch { /* ignore */ }
+  }, [])
+
   const handleAdd = async () => {
     if (!newContent.trim()) return
     try {
@@ -174,6 +191,7 @@ export function MemoryEntriesPanel() {
       setNewContent('')
       setAdding(false)
       await loadEntries()
+      await reloadAllCounts()
       notify({ message: 'Memory added' })
     } catch (err) {
       notifyError(err, 'Failed to add memory')
@@ -195,6 +213,7 @@ export function MemoryEntriesPanel() {
     try {
       await deleteEntry(activeTab, index)
       await loadEntries()
+      await reloadAllCounts()
       notify({ message: 'Memory deleted' })
     } catch (err) {
       notifyError(err, 'Failed to delete memory')
@@ -207,10 +226,7 @@ export function MemoryEntriesPanel() {
     return entries.filter(e => e.content.toLowerCase().includes(needle))
   }, [entries, query])
 
-  const tabOptions = [
-    { id: 'memory' as const, label: `Agent Memories (${entries.filter(e => activeTab === 'memory' ? true : false).length})` },
-    { id: 'user' as const, label: `User Profile (${entries.filter(e => activeTab === 'user' ? true : false).length})` },
-  ]
+  const totalEntries = counts.memory + counts.user
 
   return (
     <div className="flex flex-col gap-4">
@@ -218,20 +234,20 @@ export function MemoryEntriesPanel() {
       <SegmentedControl
         onChange={id => { setActiveTab(id); setQuery('') }}
         options={[
-          { id: 'memory', label: `Agent Memories${entries.length ? ` (${entries.length})` : ''}` },
-          { id: 'user', label: `User Profile${entries.length ? ` (${entries.length})` : ''}` },
+          { id: 'memory', label: `Agent Memories${counts.memory ? ` (${counts.memory})` : ''}` },
+          { id: 'user', label: `User Profile${counts.user ? ` (${counts.user})` : ''}` },
         ]}
         value={activeTab}
       />
 
       {/* Search */}
-      {entries.length > 2 && (
+      {totalEntries > 2 && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search memories..."
+            placeholder={`Search ${activeTab === 'memory' ? 'agent memories' : 'profile entries'}...`}
             className="pl-9"
           />
           {query && (
@@ -284,7 +300,7 @@ export function MemoryEntriesPanel() {
         </Button>
       )}
 
-      {/* Entries list */}
+      {/* Entries grid */}
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
           <div className="size-3.5 animate-spin rounded-full border-2 border-(--ui-stroke-secondary) border-t-(--ui-text-secondary)" />
@@ -293,7 +309,7 @@ export function MemoryEntriesPanel() {
       ) : filteredEntries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-(--ui-stroke-secondary) py-8 text-center">
           <p className="text-muted-foreground text-sm">
-            {query ? `No memories matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user'} memories yet.`}
+            {query ? `No ${activeTab === 'memory' ? 'memories' : 'entries'} matching "${query}"` : `No ${activeTab === 'memory' ? 'agent' : 'user'} entries yet.`}
           </p>
           {query && (
             <Button size="sm" variant="ghost" className="mt-2" onClick={() => setQuery('')}>
@@ -305,10 +321,14 @@ export function MemoryEntriesPanel() {
         <>
           {query && (
             <p className="text-[0.7rem] font-medium text-muted-foreground/70">
-              {filteredEntries.length} of {entries.length} memories
+              {filteredEntries.length} of {entries.length} entries
             </p>
           )}
-          <div className="flex flex-col gap-2">
+          <div className={cn(
+            'grid gap-3',
+            filteredEntries.length >= 3 ? 'grid-cols-3' :
+            filteredEntries.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
+          )}>
             {filteredEntries.map(entry => (
               <MemoryCard
                 key={entry.index}
